@@ -3,6 +3,7 @@ import asyncio
 import asyncpg
 import os
 import subprocess
+from urllib.parse import urlparse
 
 from sqlalchemy.future import select
 from app.models.user import User
@@ -25,7 +26,9 @@ async def ensure_db_exists():
     logger.info("Checking database connection...")
 
     try:
-        conn = await asyncpg.connect(db_url)
+        host = (urlparse(db_url).hostname or "").lower() if db_url else ""
+        connect_args = {"statement_cache_size": 0} if any(token in host for token in ["pgbouncer", "pooler"]) else {}
+        conn = await asyncpg.connect(db_url, **connect_args)
         await conn.close()
         logger.info("Database connection successful.")
     except Exception as e:
