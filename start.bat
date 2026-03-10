@@ -1,0 +1,9 @@
+@echo off
+echo Starting Agro Management System...
+echo.
+echo Installing requirements...
+pip install -r requirements.txt
+echo.
+echo Launching Uvicorn with automated DB initialization...
+uvicorn app.main:app --reload --port 8000
+pause

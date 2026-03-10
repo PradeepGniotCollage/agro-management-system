@@ -1,0 +1,28 @@
+from typing import Optional, List
+from pydantic import BaseModel, ConfigDict
+import uuid
+from datetime import datetime
+
+class FarmerBase(BaseModel):
+    farmer_name: str
+    whatsapp_number: str
+    address: Optional[str] = None
+
+class FarmerCreate(FarmerBase):
+    pass
+
+class FarmerUpdate(BaseModel):
+    farmer_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    address: Optional[str] = None
+
+class Farmer(FarmerBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class FarmerListResponse(BaseModel):
+    farmers: List[Farmer]
+    total: int
