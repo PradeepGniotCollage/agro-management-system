@@ -8,12 +8,12 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
 
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
-    POSTGRES_SERVER: str
-    POSTGRES_PORT: str
-    POSTGRES_DB: str
-    DATABASE_URL: str
+    POSTGRES_USER: Optional[str] = None
+    POSTGRES_PASSWORD: Optional[str] = None
+    POSTGRES_SERVER: Optional[str] = None
+    POSTGRES_PORT: Optional[str] = None
+    POSTGRES_DB: Optional[str] = None
+    DATABASE_URL: Optional[str] = None
 
     INITIAL_ADMIN_PHONE: str = "9838000000"
     INITIAL_ADMIN_PASSWORD: str = "1234"
@@ -34,19 +34,22 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# ---------- AUTO SWITCH (Docker / Local / Vercel) ----------
-import os
-if os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production":
-    # Do not override in Vercel/Production
-    pass
+# ---------- DATABASE URL NORMALIZATION & AUTO SWITCH ----------
+if settings.DATABASE_URL:
+    if settings.DATABASE_URL.startswith("postgres://"):
+        settings.DATABASE_URL = settings.DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif settings.DATABASE_URL.startswith("postgresql://"):
+        settings.DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 else:
-    try:
-        socket.gethostbyname(settings.POSTGRES_SERVER)
-    except:
-        settings.POSTGRES_SERVER = "localhost"
+    if all([settings.POSTGRES_USER, settings.POSTGRES_PASSWORD, settings.POSTGRES_PORT, settings.POSTGRES_DB]):
+        host = settings.POSTGRES_SERVER or "localhost"
+        try:
+            socket.gethostbyname(host)
+        except:
+            host = "localhost"
         settings.DATABASE_URL = (
             f"postgresql+asyncpg://{settings.POSTGRES_USER}:"
-            f"{settings.POSTGRES_PASSWORD}@localhost:"
+            f"{settings.POSTGRES_PASSWORD}@{host}:"
             f"{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
         )
         settings.SERIAL_URL = None

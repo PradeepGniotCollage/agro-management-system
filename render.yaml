@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: soil-monitoring-web
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api/v1/health/
+    disk:
+      name: app-static
+      mountPath: /app/static
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: soil-monitoring-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: INITIAL_ADMIN_PHONE
+        value: "9838000000"
+      - key: INITIAL_ADMIN_PASSWORD
+        value: "1234"
+      - key: FRONTEND_URL
+        value: "https://example.com"
+      - key: ENVIRONMENT
+        value: "production"
+
+  - type: postgres
+    name: soil-monitoring-db
+    plan: starter
