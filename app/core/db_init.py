@@ -3,6 +3,7 @@
  import asyncpg
  import os
 from alembic.config import Config
+
 from alembic import command
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -58,9 +59,6 @@ async def ensure_db_exists():
 async def initialize_db():
     """Complete database initialization sequence."""
     logger.info("Starting database initialization...")
-    if os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production":
-        logger.info("Skipping migrations and seeding in Vercel/Production environment.")
-        return
     await ensure_db_exists()
     
     # Small delay to ensure DB is ready for migrations
