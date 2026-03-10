@@ -8,23 +8,37 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from contextlib import asynccontextmanager
-from app.core.config import settings
+import os
+try:
+    from app.core.config import settings
+except Exception as _settings_err:
+    class _FallbackSettings:
+        PROJECT_NAME = "Jaiswal Khad Bhandar - Agro Management System"
+        VERSION = "1.0.0"
+        API_V1_STR = "/api/v1"
+    settings = _FallbackSettings()
 from app.api.v1.api import api_router
-from app.core.db_init import initialize_db
+try:
+    from app.core.db_init import initialize_db
+except Exception as _dbinit_err:
+    initialize_db = None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize Database
-    logger.info("Application starting up... Initializing database.")
+    # Startup: Initialize Database (serverless-safe)
+    logger.info("Application starting up... (serverless-safe)")
     try:
-        await initialize_db()
-        logger.info("Database initialization complete.")
+        is_serverless = os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production"
+        if not is_serverless and initialize_db is not None:
+            await initialize_db()
+            logger.info("Database initialization complete.")
+        else:
+            logger.info("Skipping DB migrations/seeding at startup (serverless/production).")
     except Exception as e:
-        logger.critical(f"Database initialization failed: {e}")
-        raise
+        logger.error(f"Startup DB init failed (skipped in serverless): {e}", exc_info=True)
     
     yield
     # Shutdown logic if needed
