@@ -19,6 +19,8 @@ async def ensure_db_exists():
     Sirf connection test karte hain.
     """
     db_url = os.getenv("DATABASE_URL")
+    if db_url and db_url.startswith("postgresql+asyncpg://"):
+        db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
     logger.info("Checking database connection...")
 
