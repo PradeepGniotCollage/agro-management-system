@@ -238,6 +238,7 @@ class SoilService:
 
         # Step 3: AI Prediction & Analysis
         test_status = "completed"
+        summary_message = "Analysis complete"
         try:
             full_data = {
                 "moisture": sensor_data.get("moisture", 0.0),
@@ -254,16 +255,22 @@ class SoilService:
 
             try:
                 micronutrients_pred = soil_ai.predict(sensor_data)
-                if micronutrients_pred:
+                if micronutrients_pred is None:
+                    logger.warning("AI model not available. Micronutrients will remain 0.0.")
+                    test_status = "incomplete"
+                    summary_message = "AI model not available"
+                elif micronutrients_pred:
                     for key, val in micronutrients_pred.items():
                         full_data[key] = val
                     logger.info("AI micronutrient prediction successful")
                 else:
                     logger.warning("AI prediction returned no data (model missing or error). Micronutrients will remain 0.0.")
                     test_status = "incomplete"
+                    summary_message = "AI model not available"
             except Exception as ai_err:
                 logger.warning(f"AI prediction failure error: {str(ai_err)}")
                 test_status = "incomplete"
+                summary_message = "AI model not available"
 
             status_summary = {k: evaluate_status(v, k) for k, v in full_data.items()}
             fertilizers_data = FertilizerService.calculate_recommendations(
@@ -289,7 +296,7 @@ class SoilService:
                 "soil_score": score,
                 "fertilizer_recommendation": fertilizers_data,
                 "status_summary": status_summary,
-                "summary_message": "Analysis complete" if test_status == "completed" else "Analysis partial (Micronutrients failed)"
+                "summary_message": summary_message
             }
             
             db_record = await self.repository.create(user_id, db_insert_data)

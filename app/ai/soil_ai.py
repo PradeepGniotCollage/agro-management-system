@@ -1,53 +1,81 @@
 import os
+import logging
+from pathlib import Path
+from typing import Optional, Dict, Any
+
 import joblib
 import numpy as np
-import logging
 
 logger = logging.getLogger(__name__)
 
 class SoilAIModel:
-    def __init__(self, model_path: str = "model.joblib"):
-        self.model_path = model_path
-        self.model = None
-        self._load_or_mock_model()
+    def __init__(self, model_filename: str = "model.joblib"):
+        self.model_filename = model_filename
+        self.model: Any = None
+        self._load_attempted = False
+        self._resolved_model_path: Optional[Path] = None
 
-    def _load_or_mock_model(self):
-        if os.path.exists(self.model_path):
+    def _candidate_paths(self) -> list[Path]:
+        env_path = os.getenv("MODEL_PATH") or os.getenv("AI_MODEL_PATH")
+        candidates: list[Path] = []
+
+        if env_path:
+            candidates.append(Path(env_path))
+
+        project_root = Path(__file__).resolve().parents[2]
+        candidates.extend([
+            project_root / self.model_filename,
+            project_root / "models" / self.model_filename,
+            project_root / "app" / "ai" / "models" / self.model_filename,
+            Path.cwd() / self.model_filename,
+        ])
+
+        unique: list[Path] = []
+        seen: set[str] = set()
+        for p in candidates:
+            key = str(p.resolve()) if p.exists() else str(p)
+            if key not in seen:
+                unique.append(p)
+                seen.add(key)
+        return unique
+
+    def _load_model_safe(self) -> None:
+        if self._load_attempted:
+            return
+        self._load_attempted = True
+
+        for candidate in self._candidate_paths():
             try:
-                self.model = joblib.load(self.model_path)
-                logger.info(f"Loaded existing AI model from {self.model_path}")
+                if not candidate.exists():
+                    continue
+                self.model = joblib.load(candidate)
+                self._resolved_model_path = candidate
+                logger.info(f"Loaded AI model from {candidate}")
+                return
             except Exception as e:
-                logger.error(f"Failed to load AI model: {e}")
-                
-        if not self.model:
-            logger.warning(f"Model file {self.model_path} not found. AI-based micronutrient prediction will be unavailable.")
+                logger.exception(f"Failed to load AI model from {candidate}: {e}")
+                self.model = None
+                self._resolved_model_path = None
 
-    def predict(self, sensor_data: dict) -> dict:
+        logger.warning(
+            "Model file model.joblib not found. AI-based micronutrient prediction will be unavailable. "
+            f"Searched: {[str(p) for p in self._candidate_paths()]}"
+        )
+
+    def is_available(self) -> bool:
+        self._load_model_safe()
+        return self.model is not None
+
+    def predict(self, sensor_data: Dict[str, Any]) -> Optional[Dict[str, float]]:
         """
         Predicts micronutrients using Joblib ML model.
-        Falls back to a simple estimation if the model is missing.
         """
+        self._load_model_safe()
+
         result_keys = ["zinc", "boron", "iron", "copper", "magnesium", "manganese", "calcium", "sulphur", "organic_carbon"]
         
         if not self.model:
-            logger.info("AI model missing. Using simple estimation logic for micronutrients.")
-            # Simple heuristic based on NPK and Organic Carbon proxy
-            ph = sensor_data.get("ph", 7.0)
-            n = sensor_data.get("nitrogen", 0)
-            
-            # These are just "safe" non-zero values based on common ranges to avoid 0.0
-            # in the absence of a real model.
-            return {
-                "zinc": round(0.5 + (n * 0.001), 2),
-                "boron": round(0.4 + (ph * 0.01), 2),
-                "iron": round(3.0 + (n * 0.005), 2),
-                "copper": round(1.2, 2),
-                "magnesium": round(0.8, 2),
-                "manganese": round(2.5, 2),
-                "calcium": round(1800.0, 2),
-                "sulphur": round(7.0, 2),
-                "organic_carbon": round(0.45 + (n * 0.0001), 2)
-            }
+            return None
 
         # Feature vector
         features = np.array([
@@ -64,7 +92,7 @@ class SoilAIModel:
             prediction = self.model.predict(features)[0]
             return {key: round(float(val), 2) for key, val in zip(result_keys, prediction)}
         except Exception as e:
-            logger.error(f"Error during AI prediction: {e}")
-            return {}
+            logger.exception(f"Error during AI prediction: {e}")
+            return None
 
 soil_ai = SoilAIModel()
