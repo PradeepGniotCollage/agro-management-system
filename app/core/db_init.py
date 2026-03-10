@@ -1,6 +1,7 @@
-import logging
-import asyncio
-import asyncpg
+ import logging
+ import asyncio
+ import asyncpg
+ import os
 from alembic.config import Config
 from alembic import command
 from sqlalchemy import select
@@ -23,6 +24,11 @@ async def ensure_db_exists():
     host = settings.POSTGRES_SERVER
     port = settings.POSTGRES_PORT
     
+    import os
+    if os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production":
+        logger.info("Skipping database creation check in Vercel/Production environment.")
+        return
+
     logger.info(f"Checking if database '{db_name}' exists...")
     
     try:
@@ -52,6 +58,9 @@ async def ensure_db_exists():
 async def initialize_db():
     """Complete database initialization sequence."""
     logger.info("Starting database initialization...")
+    if os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production":
+        logger.info("Skipping migrations and seeding in Vercel/Production environment.")
+        return
     await ensure_db_exists()
     
     # Small delay to ensure DB is ready for migrations

@@ -34,14 +34,19 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# ---------- AUTO SWITCH (Docker / Local) ----------
-try:
-    socket.gethostbyname(settings.POSTGRES_SERVER)
-except:
-    settings.POSTGRES_SERVER = "localhost"
-    settings.DATABASE_URL = (
-        f"postgresql+asyncpg://{settings.POSTGRES_USER}:"
-        f"{settings.POSTGRES_PASSWORD}@localhost:"
-        f"{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-    )
-    settings.SERIAL_URL = None
+# ---------- AUTO SWITCH (Docker / Local / Vercel) ----------
+import os
+if os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production":
+    # Do not override in Vercel/Production
+    pass
+else:
+    try:
+        socket.gethostbyname(settings.POSTGRES_SERVER)
+    except:
+        settings.POSTGRES_SERVER = "localhost"
+        settings.DATABASE_URL = (
+            f"postgresql+asyncpg://{settings.POSTGRES_USER}:"
+            f"{settings.POSTGRES_PASSWORD}@localhost:"
+            f"{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+        )
+        settings.SERIAL_URL = None

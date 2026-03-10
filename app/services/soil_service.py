@@ -26,7 +26,10 @@ class SoilService:
         Robust check: Not only checks connection to bridge but validates if 
         real JSON data is actually streaming from the hardware sensor.
         """
+        import os
         from app.core.config import settings
+        if (os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production") and not settings.SERIAL_URL:
+            return {"connected": False, "data": None, "message": "Sensor hardware check disabled on serverless deployment (set SERIAL_URL to enable)."}
         import json
         import time
 
@@ -89,8 +92,11 @@ class SoilService:
         """
         Automated: Scans available COM ports or uses SERIAL_URL for live JSON data.
         """
-        import json
+        import os
         from app.core.config import settings
+        if (os.environ.get("VERCEL") == "1" or os.environ.get("ENVIRONMENT") == "production") and not settings.SERIAL_URL:
+            return {"status": "Error", "message": "Live sensor read disabled on serverless deployment (set SERIAL_URL to enable)."}
+        import json
         
         # Priority 1: Use explicitly configured SERIAL_URL (e.g. for Docker)
         if settings.SERIAL_URL:
