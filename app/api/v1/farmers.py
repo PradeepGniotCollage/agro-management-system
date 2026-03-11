@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 import uuid
 import io
 import csv
@@ -56,18 +56,20 @@ async def delete_farmer(
 async def get_farmers_with_status(
     skip: int = 0,
     limit: int = 100,
+    search: Optional[str] = None,
     current_user = Depends(get_current_user),
     farmer_service: FarmerService = Depends(get_farmer_service)
 ):
-    farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=limit)
+    farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=limit, search=search)
     return {"farmers": farmers, "total": total}
 @router.get("/export-csv")
 async def export_farmers_csv(
+    search: Optional[str] = None,
     current_user = Depends(get_current_user),
     farmer_service: FarmerService = Depends(get_farmer_service)
 ):
-    # Fetch all farmers (using a large limit for export)
-    farmers, _ = await farmer_service.get_farmers_with_status(skip=0, limit=10000)
+    # Fetch all farmers matching search (using a large limit for export)
+    farmers, _ = await farmer_service.get_farmers_with_status(skip=0, limit=10000, search=search)
     
     output = io.StringIO()
     writer = csv.writer(output)

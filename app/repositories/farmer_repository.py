@@ -77,31 +77,41 @@ class FarmerRepository:
             logger.error(f"Database error while deleting farmer {farmer.id}: {str(e)}")
             raise DatabaseError("Failed to delete farmer record")
 
-    async def get_farmers_with_status(self, skip: int = 0, limit: int = 100) -> Tuple[List[dict], int]:
+    async def get_farmers_with_status(self, skip: int = 0, limit: int = 100, search: Optional[str] = None) -> Tuple[List[dict], int]:
         try:
             # Import here to avoid circular dependency
             from app.models.soil_test import SoilTest
-            from sqlalchemy import desc
+            from sqlalchemy import desc, or_
 
-            # Get total count
+            # Base query for farmers
             count_stmt = select(func.count()).select_from(Farmer)
+            stmt = select(
+                Farmer,
+                SoilTest.status.label("soil_test_status"),
+                SoilTest.created_at.label("last_test_date")
+            )
+
+            # Apply search filter if provided
+            if search:
+                search_filter = or_(
+                    Farmer.farmer_name.ilike(f"%{search}%"),
+                    Farmer.whatsapp_number.ilike(f"%{search}%")
+                )
+                count_stmt = count_stmt.where(search_filter)
+                stmt = stmt.where(search_filter)
+
+            # Get total count with filter
             count_result = await self.session.execute(count_stmt)
             total = count_result.scalar()
 
             # Subquery to get the latest soil test for each farmer
-            # We use a correlated subquery or a row_number() approach. 
-            # For simplicity and broad compatibility, we'll use a subquery to get the latest test ID per farmer.
             latest_test_sub = select(
                 SoilTest.farmer_id,
                 func.max(SoilTest.id).label("latest_id")
             ).group_by(SoilTest.farmer_id).subquery()
 
-            # Join Farmer with the latest SoilTest
-            stmt = select(
-                Farmer,
-                SoilTest.status.label("soil_test_status"),
-                SoilTest.created_at.label("last_test_date")
-            ).outerjoin(
+            # Complete the join and ordering
+            stmt = stmt.outerjoin(
                 latest_test_sub, Farmer.id == latest_test_sub.c.farmer_id
             ).outerjoin(
                 SoilTest, SoilTest.id == latest_test_sub.c.latest_id
