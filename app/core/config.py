@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     SERIAL_URL: Optional[str] = None
+    BACKEND_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(

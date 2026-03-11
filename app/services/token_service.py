@@ -1,6 +1,5 @@
 import secrets
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
 from fastapi import HTTPException, status
 
 from app.models.download_token import DownloadToken
@@ -13,7 +12,7 @@ class TokenService:
         self.token_repo = token_repo
         self.soil_repo = soil_repo
 
-    async def generate_token_for_report(self, soil_test_id: UUID) -> str:
+    async def generate_token_for_report(self, soil_test_id: int) -> str:
         soil_test = await self.soil_repo.get_by_id(soil_test_id)
         if not soil_test:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Soil test not found")
@@ -90,7 +89,7 @@ class TokenService:
             
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid mobile number")
 
-    async def get_verified_soil_test_id(self, token_str: str) -> UUID:
+    async def get_verified_soil_test_id(self, token_str: str) -> int:
         token = await self.get_valid_token_or_fail(token_str)
         if not token.is_verified:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token not verified")

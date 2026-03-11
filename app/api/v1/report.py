@@ -45,8 +45,8 @@ async def generate_qr_for_report(
     try:
         token_str = await token_service.generate_token_for_report(soil_test_id)
         
-        # URL encoded inside QR - uses FRONTEND_URL from settings
-        verification_url = f"{settings.FRONTEND_URL}/report/verify/{token_str}"
+        # URL encoded inside QR - uses BACKEND_URL and API_V1_STR from settings
+        verification_url = f"{settings.BACKEND_URL}{settings.API_V1_STR}/report/verify/{token_str}"
         
         qr_bytes = QRService.generate_qr(verification_url)
         
