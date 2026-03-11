@@ -65,3 +65,11 @@ async def forgot_password(
     """
     auth_service = AuthService(db)
     return await auth_service.reset_password(reset_in)
+
+@router.post("/logout")
+async def logout(current_user: User = Depends(get_current_user)):
+    """
+    Logout user by returning a success message.
+    Client should remove the access token to complete logout.
+    """
+    return {"message": "Successfully logged out"}
