@@ -135,24 +135,6 @@ class PDFService:
         create_table_with_badges("Micronutrients", report_data.micronutrients)
         create_table_with_badges("Environmental Parameters", report_data.environmental_parameters)
 
-        # --- 4. Fertilizer Recommendations Table ---
-        elements.append(Paragraph("<b>Fertilizer Recommendations</b>", styles['Heading3']))
-        elements.append(Spacer(1, 8))
-        
-        fert_data = [["Fertilizer", "Requirement", "Unit"]]
-        for fert in report_data.fertilizer_recommendation:
-            fert_data.append([fert.name, f"{fert.requirement:.1f}", fert.unit])
-        
-        fert_tbl = Table(fert_data, colWidths=[2.5*inch, 1.5*inch, 1.0*inch])
-        fert_tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), BRAND_GREEN),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('BACKGROUND', (0,1), (-1,-1), ROW_BEIGE),
-        ]))
-        elements.append(fert_tbl)
-        
         return elements
 
     @staticmethod
