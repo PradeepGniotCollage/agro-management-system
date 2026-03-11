@@ -76,3 +76,56 @@ class FarmerRepository:
         except SQLAlchemyError as e:
             logger.error(f"Database error while deleting farmer {farmer.id}: {str(e)}")
             raise DatabaseError("Failed to delete farmer record")
+
+    async def get_farmers_with_status(self, skip: int = 0, limit: int = 100) -> Tuple[List[dict], int]:
+        try:
+            # Import here to avoid circular dependency
+            from app.models.soil_test import SoilTest
+            from sqlalchemy import desc
+
+            # Get total count
+            count_stmt = select(func.count()).select_from(Farmer)
+            count_result = await self.session.execute(count_stmt)
+            total = count_result.scalar()
+
+            # Subquery to get the latest soil test for each farmer
+            # We use a correlated subquery or a row_number() approach. 
+            # For simplicity and broad compatibility, we'll use a subquery to get the latest test ID per farmer.
+            latest_test_sub = select(
+                SoilTest.farmer_id,
+                func.max(SoilTest.id).label("latest_id")
+            ).group_by(SoilTest.farmer_id).subquery()
+
+            # Join Farmer with the latest SoilTest
+            stmt = select(
+                Farmer,
+                SoilTest.status.label("soil_test_status"),
+                SoilTest.created_at.label("last_test_date")
+            ).outerjoin(
+                latest_test_sub, Farmer.id == latest_test_sub.c.farmer_id
+            ).outerjoin(
+                SoilTest, SoilTest.id == latest_test_sub.c.latest_id
+            ).offset(skip).limit(limit).order_by(Farmer.created_at.desc())
+
+            result = await self.session.execute(stmt)
+            rows = result.all()
+
+            farmers_list = []
+            for row in rows:
+                farmer_obj = row[0]
+                status = row[1] if row[1] else "No Test Found"
+                date = row[2]
+                
+                farmers_list.append({
+                    "id": farmer_obj.id,
+                    "farmer_name": farmer_obj.farmer_name,
+                    "whatsapp_number": farmer_obj.whatsapp_number,
+                    "address": farmer_obj.address,
+                    "latest_soil_test_status": status,
+                    "last_test_date": date
+                })
+            
+            return farmers_list, total
+        except SQLAlchemyError as e:
+            logger.error(f"Database error while fetching farmers with status: {str(e)}")
+            raise DatabaseError("Failed to fetch farmers with status")

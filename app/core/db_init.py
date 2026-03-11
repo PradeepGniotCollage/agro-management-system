@@ -9,6 +9,7 @@ from sqlalchemy.future import select
 from app.models.user import User
 from app.core.security import get_password_hash
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ async def ensure_db_exists():
     Production (Render + Supabase) me database create/check nahi karte.
     Sirf connection test karte hain.
     """
-    db_url = os.getenv("DATABASE_URL")
+    db_url = settings.DATABASE_URL
     if db_url and db_url.startswith("postgresql+asyncpg://"):
         db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
@@ -77,9 +78,9 @@ async def seed_initial_data():
 
                 admin_user = User(
                     full_name="System Admin",
-                    phone=os.getenv("INITIAL_ADMIN_PHONE", "9999999999"),
+                    phone=settings.INITIAL_ADMIN_PHONE,
                     hashed_password=get_password_hash(
-                        os.getenv("INITIAL_ADMIN_PASSWORD", "admin123")
+                        settings.INITIAL_ADMIN_PASSWORD
                     ),
                     role="admin",
                     is_active=True,

@@ -26,3 +26,17 @@ class Farmer(FarmerBase):
 class FarmerListResponse(BaseModel):
     farmers: List[Farmer]
     total: int
+
+class FarmerWithStatus(BaseModel):
+    id: int
+    farmer_name: str
+    whatsapp_number: str
+    address: Optional[str] = None
+    latest_soil_test_status: Optional[str] = "No Test Found"
+    last_test_date: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class FarmerStatusListResponse(BaseModel):
+    farmers: List[FarmerWithStatus]
+    total: int

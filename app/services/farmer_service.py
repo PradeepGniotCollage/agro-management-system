@@ -35,3 +35,6 @@ class FarmerService:
         if not farmer:
             return False
         return await self.repository.delete(farmer)
+
+    async def get_farmers_with_status(self, skip: int = 0, limit: int = 100) -> Tuple[List[dict], int]:
+        return await self.repository.get_farmers_with_status(skip=skip, limit=limit)

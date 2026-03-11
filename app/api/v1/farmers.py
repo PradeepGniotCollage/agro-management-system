@@ -5,7 +5,7 @@ import uuid
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.schemas.farmer import Farmer, FarmerCreate, FarmerUpdate, FarmerListResponse
+from app.schemas.farmer import Farmer, FarmerCreate, FarmerUpdate, FarmerListResponse, FarmerStatusListResponse
 from app.services.farmer_service import FarmerService
 from app.repositories.farmer_repository import FarmerRepository
 
@@ -48,3 +48,13 @@ async def delete_farmer(
     if not await farmer_service.delete_farmer(farmer_id):
         raise HTTPException(status_code=404, detail="Farmer not found")
     return None
+
+@router.get("/status-list", response_model=FarmerStatusListResponse)
+async def get_farmers_with_status(
+    skip: int = 0,
+    limit: int = 100,
+    current_user = Depends(get_current_user),
+    farmer_service: FarmerService = Depends(get_farmer_service)
+):
+    farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=limit)
+    return {"farmers": farmers, "total": total}
