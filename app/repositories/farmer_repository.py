@@ -88,7 +88,8 @@ class FarmerRepository:
             stmt = select(
                 Farmer,
                 SoilTest.status.label("soil_test_status"),
-                SoilTest.created_at.label("last_test_date")
+                SoilTest.created_at.label("last_test_date"),
+                SoilTest.id.label("soil_test_id")
             )
 
             # Apply search filter if provided
@@ -125,6 +126,7 @@ class FarmerRepository:
                 farmer_obj = row[0]
                 status = row[1] if row[1] else "No Test Found"
                 date = row[2]
+                test_id = row[3]
                 
                 farmers_list.append({
                     "id": farmer_obj.id,
@@ -132,6 +134,7 @@ class FarmerRepository:
                     "whatsapp_number": farmer_obj.whatsapp_number,
                     "address": farmer_obj.address,
                     "latest_soil_test_status": status,
+                    "latest_soil_test_id": test_id,
                     "last_test_date": date
                 })
             

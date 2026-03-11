@@ -33,6 +33,7 @@ class FarmerWithStatus(BaseModel):
     whatsapp_number: str
     address: Optional[str] = None
     latest_soil_test_status: Optional[str] = "No Test Found"
+    latest_soil_test_id: Optional[int] = None
     last_test_date: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
