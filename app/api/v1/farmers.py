@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
+import io
+import csv
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
@@ -58,3 +61,35 @@ async def get_farmers_with_status(
 ):
     farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=limit)
     return {"farmers": farmers, "total": total}
+@router.get("/export-csv")
+async def export_farmers_csv(
+    current_user = Depends(get_current_user),
+    farmer_service: FarmerService = Depends(get_farmer_service)
+):
+    # Fetch all farmers (using a large limit for export)
+    farmers, _ = await farmer_service.get_farmers_with_status(skip=0, limit=10000)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(["Farmer Name", "Mobile No.", "Address", "Soil Test Status", "Last Test Date"])
+    
+    # Data
+    for farmer in farmers:
+        last_test_date = farmer["last_test_date"].strftime("%Y-%m-%d %H:%M:%S") if farmer["last_test_date"] else "N/A"
+        writer.writerow([
+            farmer["farmer_name"],
+            farmer["whatsapp_number"],
+            farmer["address"] or "N/A",
+            farmer["latest_soil_test_status"],
+            last_test_date
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=farmers_status.csv"}
+    )
