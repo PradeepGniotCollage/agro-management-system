@@ -36,10 +36,20 @@ def do_run_migrations(connection: Connection) -> None:
         context.run_migrations()
 
 async def run_async_migrations() -> None:
+    # Handle pgbouncer/transaction pooling
+    url = settings.DATABASE_URL or ""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    is_pgbouncer = any(token in host for token in ["pgbouncer", "pooler"])
+    
+    connect_args = {"statement_cache_size": 0} if is_pgbouncer else {}
+
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:
