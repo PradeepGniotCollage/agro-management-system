@@ -23,6 +23,28 @@ def get_soil_service(db: AsyncSession = Depends(get_db)):
     farmer_repo = FarmerRepository(db)
     return SoilService(repo, farmer_repo)
 
+@router.get("/start", response_model=dict)
+async def lookup_farmer_for_test(
+    whatsapp_number: str,
+    current_user: User = Depends(get_current_user),
+    soil_service: SoilService = Depends(get_soil_service)
+):
+    """
+    Lookup farmer details by WhatsApp number for real-time frontend suggestion.
+    """
+    if not soil_service.farmer_repository:
+        raise HTTPException(status_code=500, detail="Farmer repository not configured")
+        
+    farmer = await soil_service.farmer_repository.get_by_whatsapp(whatsapp_number)
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+        
+    return {
+        "farmer_name": farmer.farmer_name,
+        "address": farmer.address,
+        "whatsapp_number": farmer.whatsapp_number
+    }
+
 @router.post("/start", response_model=SoilTestResponse, status_code=status.HTTP_201_CREATED)
 async def start_soil_test_workflow(
     test_data: SoilTestCreate,

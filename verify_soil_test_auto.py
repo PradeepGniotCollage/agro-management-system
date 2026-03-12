@@ -44,9 +44,21 @@ def test_soil_test_auto_farmer():
         data = response_update.json()
         print(f"Success! New Address: {data['report_meta'].get('address', 'N/A')}") # Schema might not include address in meta, let's check response
         print(f"Report ID: {data['report_meta']['report_id']}")
+    # Test Case: New Lookup Alias on Invoice Creation Path
+    print("\n--- Testing Invoice Path Lookup Alias ---")
+    resp_inv_alias = requests.get(f"{BASE_URL}/invoice/create?mobile_number={whatsapp_number}", headers=headers)
+    if resp_inv_alias.status_code == 200:
+        print(f"Success! Name: {resp_inv_alias.json()['customer_name']}")
     else:
-        print(f"Failed! Status Code: {response_update.status_code}")
-        print(response_update.text)
+        print(f"Failed! {resp_inv_alias.status_code}")
+
+    # Test Case: New Lookup Alias on Soil Test Path
+    print("\n--- Testing Soil Test Path Lookup Alias ---")
+    resp_soil_alias = requests.get(f"{BASE_URL}/soil-tests/start?whatsapp_number={whatsapp_number}", headers=headers)
+    if resp_soil_alias.status_code == 200:
+        print(f"Success! Name: {resp_soil_alias.json()['farmer_name']}")
+    else:
+        print(f"Failed! {resp_soil_alias.status_code}")
 
 if __name__ == "__main__":
     print("Note: Ensure the local server is running and UPDATE the TOKEN in the script.")

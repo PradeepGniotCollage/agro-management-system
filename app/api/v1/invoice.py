@@ -22,6 +22,24 @@ def get_invoice_service(db: AsyncSession = Depends(get_db)):
     farmer_service = FarmerService(farmer_repo)
     return InvoiceService(invoice_repo, farmer_service)
 
+@router.get("/create", response_model=dict)
+async def lookup_farmer_for_invoice(
+    mobile_number: str,
+    current_user: User = Depends(get_current_user),
+    invoice_service: InvoiceService = Depends(get_invoice_service)
+):
+    """
+    Lookup farmer details by Mobile number for real-time frontend suggestion.
+    """
+    farmer = await invoice_service.farmer_service.get_farmer_by_whatsapp(mobile_number)
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+        
+    return {
+        "customer_name": farmer.farmer_name,
+        "address": farmer.address,
+        "mobile_number": farmer.whatsapp_number
+    }
 
 @router.post("/create", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_invoice(
