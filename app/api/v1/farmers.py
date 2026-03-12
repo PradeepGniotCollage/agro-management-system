@@ -34,39 +34,6 @@ async def lookup_farmer_by_whatsapp(
     return farmer
 
 
-@router.get("/{farmer_id}", response_model=Farmer)
-async def get_farmer(
-    farmer_id: int,
-    current_user = Depends(get_current_user),
-    farmer_service: FarmerService = Depends(get_farmer_service)
-):
-    farmer = await farmer_service.get_farmer(farmer_id)
-    if not farmer:
-        raise HTTPException(status_code=404, detail="Farmer not found")
-    return farmer
-
-@router.put("/{farmer_id}", response_model=Farmer)
-async def update_farmer(
-    farmer_id: int,
-    farmer_in: FarmerUpdate,
-    current_user = Depends(get_current_user),
-    farmer_service: FarmerService = Depends(get_farmer_service)
-):
-    farmer = await farmer_service.update_farmer(farmer_id, farmer_in)
-    if not farmer:
-        raise HTTPException(status_code=404, detail="Farmer not found")
-    return farmer
-
-@router.delete("/{farmer_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_farmer(
-    farmer_id: int,
-    current_user = Depends(get_current_user),
-    farmer_service: FarmerService = Depends(get_farmer_service)
-):
-    if not await farmer_service.delete_farmer(farmer_id):
-        raise HTTPException(status_code=404, detail="Farmer not found")
-    return None
-
 @router.get("/status-list", response_model=FarmerStatusListResponse)
 async def get_farmers_with_status(
     skip: int = 0,
@@ -77,6 +44,7 @@ async def get_farmers_with_status(
 ):
     farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=limit, search=search)
     return {"farmers": farmers, "total": total}
+
 @router.get("/export-csv")
 async def export_farmers_csv(
     search: Optional[str] = None,
@@ -110,3 +78,37 @@ async def export_farmers_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=farmers_status.csv"}
     )
+
+
+@router.get("/{farmer_id}", response_model=Farmer)
+async def get_farmer(
+    farmer_id: int,
+    current_user = Depends(get_current_user),
+    farmer_service: FarmerService = Depends(get_farmer_service)
+):
+    farmer = await farmer_service.get_farmer(farmer_id)
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return farmer
+
+@router.put("/{farmer_id}", response_model=Farmer)
+async def update_farmer(
+    farmer_id: int,
+    farmer_in: FarmerUpdate,
+    current_user = Depends(get_current_user),
+    farmer_service: FarmerService = Depends(get_farmer_service)
+):
+    farmer = await farmer_service.update_farmer(farmer_id, farmer_in)
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return farmer
+
+@router.delete("/{farmer_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_farmer(
+    farmer_id: int,
+    current_user = Depends(get_current_user),
+    farmer_service: FarmerService = Depends(get_farmer_service)
+):
+    if not await farmer_service.delete_farmer(farmer_id):
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return None
