@@ -19,6 +19,21 @@ def get_farmer_service(db: AsyncSession = Depends(get_db)):
     return FarmerService(repo)
 
 
+@router.get("/lookup/{whatsapp_number}", response_model=Farmer)
+async def lookup_farmer_by_whatsapp(
+    whatsapp_number: str,
+    current_user = Depends(get_current_user),
+    farmer_service: FarmerService = Depends(get_farmer_service)
+):
+    """
+    Lookup farmer details by WhatsApp number. Used by frontend for auto-fill suggestions.
+    """
+    farmer = await farmer_service.get_farmer_by_whatsapp(whatsapp_number)
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return farmer
+
+
 @router.get("/{farmer_id}", response_model=Farmer)
 async def get_farmer(
     farmer_id: int,
