@@ -11,9 +11,9 @@ class InvoiceItemCreate(BaseModel):
 
 class InvoiceCreate(BaseModel):
     farmer_id: Optional[int] = None
-    customer_name: str = Field(..., min_length=1)
+    customer_name: Optional[str] = None
     mobile_number: str = Field(..., min_length=10, max_length=15, pattern=r"^\d{10,15}$")
-    address: str = Field(..., min_length=1)
+    address: Optional[str] = None
     invoice_date: date
 
     items: List[InvoiceItemCreate] = Field(..., min_length=1)

@@ -7,7 +7,9 @@ from app.api.deps import get_current_user
 from app.models.user import User
 
 from app.repositories.invoice_repository import InvoiceRepository
+from app.repositories.farmer_repository import FarmerRepository
 from app.services.invoice_service import InvoiceService
+from app.services.farmer_service import FarmerService
 from app.services.invoice_pdf_service import InvoicePDFService
 from app.schemas.invoice import InvoiceCreate, InvoiceResponse
 
@@ -15,8 +17,10 @@ from app.schemas.invoice import InvoiceCreate, InvoiceResponse
 router = APIRouter()
 
 def get_invoice_service(db: AsyncSession = Depends(get_db)):
-    repo = InvoiceRepository(db)
-    return InvoiceService(repo)
+    invoice_repo = InvoiceRepository(db)
+    farmer_repo = FarmerRepository(db)
+    farmer_service = FarmerService(farmer_repo)
+    return InvoiceService(invoice_repo, farmer_service)
 
 
 @router.post("/create", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)

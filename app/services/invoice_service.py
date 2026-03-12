@@ -6,18 +6,50 @@ from app.models.invoice_item import InvoiceItem
 from app.schemas.invoice import InvoiceCreate, InvoiceResponse, InvoiceMeta, InvoiceItemResponse
 from app.repositories.invoice_repository import InvoiceRepository
 from app.services.invoice_calculator import InvoiceCalculator, CalculationResult
+from app.services.farmer_service import FarmerService
+from app.schemas.farmer import FarmerCreate
 from app.core.exceptions import CalculationError
 
 
 class InvoiceService:
-    def __init__(self, repository: InvoiceRepository):
+    def __init__(self, repository: InvoiceRepository, farmer_service: FarmerService):
         self.repository = repository
+        self.farmer_service = farmer_service
 
     async def create_invoice(self, data: InvoiceCreate, user_id: int) -> InvoiceResponse:
         """
         Orchestrates secure invoice processing safely overriding any user-provided arrays
         of numeric totals with fresh calculation runs.
         """
+        # Auto-fetch or create farmer if farmer_id is not provided
+        farmer_id = data.farmer_id
+        customer_name = data.customer_name
+        address = data.address
+        
+        if not farmer_id:
+            farmer = await self.farmer_service.get_farmer_by_whatsapp(data.mobile_number)
+            if not farmer:
+                # If new farmer, name and address are required
+                if not customer_name or not address:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST, 
+                        detail="customer_name and address are required for new farmers."
+                    )
+                
+                farmer_in = FarmerCreate(
+                    farmer_name=customer_name,
+                    whatsapp_number=data.mobile_number,
+                    address=address
+                )
+                farmer = await self.farmer_service.create_farmer(farmer_in)
+            
+            farmer_id = farmer.id
+            # Auto-detect name and address if not provided or to ensure consistency
+            if not customer_name:
+                customer_name = farmer.farmer_name
+            if not address:
+                address = farmer.address
+
         # Calculate definitive server-side financial sums
         try:
             result = InvoiceCalculator.calculate_totals(data.items)
@@ -29,9 +61,9 @@ class InvoiceService:
 
         invoice_model = Invoice(
             invoice_number=invoice_num,
-            farmer_id=data.farmer_id,
-            customer_name=data.customer_name,
-            address=data.address,
+            farmer_id=farmer_id,
+            customer_name=customer_name,
+            address=address,
             mobile_number=data.mobile_number,
             invoice_date=data.invoice_date,
             subtotal=result.subtotal,

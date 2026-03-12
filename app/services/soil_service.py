@@ -188,25 +188,41 @@ class SoilService:
         try:
             farmer_id = None
             existing_farmer = None
+            farmer_name = data_in.farmer_name
+            address = data_in.address
             
             if self.farmer_repository:
                 existing_farmer = await self.farmer_repository.get_by_whatsapp(data_in.whatsapp_number)
                 if existing_farmer:
                     farmer_id = existing_farmer.id
                     logger.info(f"Found existing farmer with ID: {farmer_id}")
+                    
+                    # Auto-detect name and address if not provided
+                    if not farmer_name:
+                        farmer_name = existing_farmer.farmer_name
+                    if not address:
+                        address = existing_farmer.address
+                    
+                    # Update address if a new one is provided
+                    if data_in.address and data_in.address != existing_farmer.address:
+                        await self.farmer_repository.update(existing_farmer, {"address": data_in.address})
+                        logger.info(f"Updated address for existing farmer: {farmer_id}")
+                        address = data_in.address
                 else:
+                    # If new farmer, name is required
+                    if not farmer_name:
+                        raise SoilMonitoringError("farmer_name is required for new farmers.")
+                    
                     new_farmer_data = {
-                        "farmer_name": data_in.farmer_name,
+                        "farmer_name": farmer_name,
                         "whatsapp_number": data_in.whatsapp_number,
-                        "address": data_in.address
+                        "address": address
                     }
                     new_farmer = await self.farmer_repository.create(new_farmer_data)
                     farmer_id = new_farmer.id
                     logger.info(f"Created new farmer with ID: {farmer_id}")
-                
-                if existing_farmer and data_in.address:
-                    await self.farmer_repository.update(existing_farmer, {"address": data_in.address})
-                    logger.info(f"Updated address for existing farmer: {farmer_id}")
+        except SoilMonitoringError:
+            raise
         except Exception as e:
             logger.error(f"Farmer Management Error: {str(e)}")
             raise SoilMonitoringError(f"[Farmer] Failed to manage farmer record: {str(e)}")
@@ -287,7 +303,7 @@ class SoilService:
         try:
             db_insert_data = {
                 "farmer_id": farmer_id,
-                "farmer_name": data_in.farmer_name,
+                "farmer_name": farmer_name,
                 "whatsapp_number": data_in.whatsapp_number,
                 "crop_type": data_in.crop_type,
                 "sensor_status": "Connected",
@@ -427,4 +443,3 @@ class SoilService:
         except Exception as e:
             logger.error(f"Error retrieving history for farmer {farmer_id}: {str(e)}")
             raise SoilMonitoringError("An error occurred while retrieving farmer test history")
-

@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class SoilTestCreate(BaseModel):
-    farmer_name: str
+    farmer_name: Optional[str] = None
     whatsapp_number: str
     address: Optional[str] = None
     crop_type: str
