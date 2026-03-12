@@ -38,6 +38,14 @@ class FarmerWithStatus(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class PaginationMeta(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+
 class FarmerStatusListResponse(BaseModel):
     farmers: List[FarmerWithStatus]
-    total: int
+    pagination: PaginationMeta

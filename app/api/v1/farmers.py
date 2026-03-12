@@ -36,14 +36,28 @@ async def lookup_farmer_by_whatsapp(
 
 @router.get("/status-list", response_model=FarmerStatusListResponse)
 async def get_farmers_with_status(
-    skip: int = 0,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 10,
     search: Optional[str] = None,
     current_user = Depends(get_current_user),
     farmer_service: FarmerService = Depends(get_farmer_service)
 ):
-    farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=limit, search=search)
-    return {"farmers": farmers, "total": total}
+    skip = (page - 1) * page_size
+    farmers, total = await farmer_service.get_farmers_with_status(skip=skip, limit=page_size, search=search)
+    
+    total_pages = (total + page_size - 1) // page_size
+    
+    return {
+        "farmers": farmers,
+        "pagination": {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+    }
 
 @router.get("/export-csv")
 async def export_farmers_csv(
