@@ -10,6 +10,12 @@ class SoilTestCreate(BaseModel):
     address: Optional[str] = None
     crop_type: str
 
+class SoilTestCreateWithSensorData(SoilTestCreate):
+    sensor_data: Dict[str, Any]
+
+class SoilTestIngestRequest(SoilTestCreateWithSensorData):
+    user_id: Optional[int] = None
+
 class MetaResponse(BaseModel):
     report_id: int
     farmer_id: Optional[int] = None

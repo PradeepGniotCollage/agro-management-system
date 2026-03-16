@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 import uuid
@@ -6,9 +6,10 @@ import logging
 from fastapi.responses import Response
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.soil_test import SoilTestCreate, SoilTestResponse, SoilTestHistory
+from app.schemas.soil_test import SoilTestCreate, SoilTestCreateWithSensorData, SoilTestIngestRequest, SoilTestResponse, SoilTestHistory
 from app.repositories.soil_repository import SoilRepository
 from app.repositories.farmer_repository import FarmerRepository
 from app.services.soil_service import SoilService
@@ -57,6 +58,42 @@ async def start_soil_test_workflow(
     """
     try:
         result = await soil_service.start_test(current_user.id, test_data)
+        await db.commit()
+        return result
+    except SoilMonitoringError as e:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@router.post("/start-manual", response_model=SoilTestResponse, status_code=status.HTTP_201_CREATED)
+async def start_soil_test_manual(
+    test_data: SoilTestCreateWithSensorData,
+    current_user: User = Depends(get_current_user),
+    soil_service: SoilService = Depends(get_soil_service),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        result = await soil_service.start_test_with_sensor_data(current_user.id, test_data, test_data.sensor_data)
+        await db.commit()
+        return result
+    except SoilMonitoringError as e:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@router.post("/ingest", response_model=SoilTestResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_soil_test(
+    payload: SoilTestIngestRequest,
+    x_device_key: str = Header(default="", alias="X-DEVICE-KEY"),
+    soil_service: SoilService = Depends(get_soil_service),
+    db: AsyncSession = Depends(get_db)
+):
+    if not settings.DEVICE_API_KEY:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DEVICE_API_KEY not configured")
+    if x_device_key != settings.DEVICE_API_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device key")
+
+    user_id = payload.user_id or settings.DEVICE_USER_ID
+    try:
+        result = await soil_service.start_test_with_sensor_data(user_id, payload, payload.sensor_data)
         await db.commit()
         return result
     except SoilMonitoringError as e:

@@ -21,6 +21,141 @@ class SoilService:
         self.repository = repository
         self.farmer_repository = farmer_repository
 
+    async def _resolve_farmer(self, data_in: SoilTestCreate) -> tuple[Optional[int], str, Optional[str]]:
+        try:
+            farmer_id = None
+            farmer_name = data_in.farmer_name
+            address = data_in.address
+
+            if self.farmer_repository:
+                existing_farmer = await self.farmer_repository.get_by_whatsapp(data_in.whatsapp_number)
+                if existing_farmer:
+                    farmer_id = existing_farmer.id
+                    logger.info(f"Found existing farmer with ID: {farmer_id}")
+
+                    if not farmer_name:
+                        farmer_name = existing_farmer.farmer_name
+                    if not address:
+                        address = existing_farmer.address
+
+                    if data_in.address and data_in.address != existing_farmer.address:
+                        await self.farmer_repository.update(existing_farmer, {"address": data_in.address})
+                        logger.info(f"Updated address for existing farmer: {farmer_id}")
+                        address = data_in.address
+                else:
+                    if not farmer_name:
+                        raise SoilMonitoringError("farmer_name is required for new farmers.")
+
+                    new_farmer_data = {
+                        "farmer_name": farmer_name,
+                        "whatsapp_number": data_in.whatsapp_number,
+                        "address": address
+                    }
+                    new_farmer = await self.farmer_repository.create(new_farmer_data)
+                    farmer_id = new_farmer.id
+                    logger.info(f"Created new farmer with ID: {farmer_id}")
+
+            if not farmer_name:
+                raise SoilMonitoringError("farmer_name is required.")
+
+            return farmer_id, farmer_name, address
+        except SoilMonitoringError:
+            raise
+        except Exception as e:
+            logger.error(f"Farmer Management Error: {str(e)}")
+            raise SoilMonitoringError(f"[Farmer] Failed to manage farmer record: {str(e)}")
+
+    def _normalize_sensor_data(self, raw_sensor_data: Dict[str, Any]) -> Dict[str, float]:
+        from app.utils.soil_calculator import get_median, validate_reading
+
+        sensor_data: Dict[str, float] = {}
+        for key, value in (raw_sensor_data or {}).items():
+            if isinstance(value, list):
+                processed_val = get_median(value)
+            else:
+                processed_val = float(value) if value is not None else 0.0
+            sensor_data[key] = validate_reading(processed_val, key)
+        return sensor_data
+
+    async def _analyze_and_save(
+        self,
+        user_id: int,
+        data_in: SoilTestCreate,
+        farmer_id: Optional[int],
+        farmer_name: str,
+        sensor_data: Dict[str, float],
+        sensor_status: str,
+    ) -> SoilTestResponse:
+        from app.utils.soil_calculator import evaluate_status, calculate_soil_score
+
+        test_status = "completed"
+        summary_message = "Analysis complete"
+        try:
+            full_data = {
+                "moisture": sensor_data.get("moisture", 0.0),
+                "temperature": sensor_data.get("temperature", 0.0),
+                "ph": sensor_data.get("ph", 0.0),
+                "ec": sensor_data.get("ec", 0.0),
+                "nitrogen": sensor_data.get("nitrogen", 0.0),
+                "phosphorus": sensor_data.get("phosphorus", 0.0),
+                "potassium": sensor_data.get("potassium", 0.0),
+                "zinc": 0.0, "boron": 0.0, "iron": 0.0, "copper": 0.0,
+                "magnesium": 0.0, "manganese": 0.0, "calcium": 0.0,
+                "sulphur": 0.0, "organic_carbon": 0.0
+            }
+
+            try:
+                micronutrients_pred = soil_ai.predict(sensor_data)
+                if micronutrients_pred is None:
+                    logger.warning("AI model not available. Micronutrients will remain 0.0.")
+                    test_status = "incomplete"
+                    summary_message = "AI model not available"
+                elif micronutrients_pred:
+                    for key, val in micronutrients_pred.items():
+                        full_data[key] = val
+                    logger.info("AI micronutrient prediction successful")
+                else:
+                    logger.warning("AI prediction returned no data (model missing or error). Micronutrients will remain 0.0.")
+                    test_status = "incomplete"
+                    summary_message = "AI model not available"
+            except Exception as ai_err:
+                logger.warning(f"AI prediction failure error: {str(ai_err)}")
+                test_status = "incomplete"
+                summary_message = "AI model not available"
+
+            status_summary = {k: evaluate_status(v, k) for k, v in full_data.items()}
+            fertilizers_data = FertilizerService.calculate_recommendations(
+                npk_data={"nitrogen": sensor_data.get("nitrogen", 0.0), "phosphorus": sensor_data.get("phosphorus", 0.0), "potassium": sensor_data.get("potassium", 0.0)},
+                ph=sensor_data.get("ph", 7.0),
+                ec=sensor_data.get("ec", 0.0)
+            )
+            score = calculate_soil_score(status_summary)
+        except Exception as e:
+            logger.error(f"Analysis Error: {str(e)}")
+            raise SoilMonitoringError(f"[Analysis] Failed to process data: {str(e)}")
+
+        try:
+            db_insert_data = {
+                "farmer_id": farmer_id,
+                "farmer_name": farmer_name,
+                "whatsapp_number": data_in.whatsapp_number,
+                "crop_type": data_in.crop_type,
+                "sensor_status": sensor_status,
+                "status": test_status,
+                **full_data,
+                "soil_score": score,
+                "fertilizer_recommendation": fertilizers_data,
+                "status_summary": status_summary,
+                "summary_message": summary_message
+            }
+
+            db_record = await self.repository.create(user_id, db_insert_data)
+            logger.info(f"One-shot soil test ({test_status}) completed for ID: {db_record.id}")
+            return self._map_to_response(db_record)
+        except Exception as e:
+            logger.error(f"Database Save Error: {str(e)}")
+            raise SoilMonitoringError(f"[Database] Failed to save report: {str(e)}")
+
     async def check_sensor_connection(self, timeout: float = 10.0) -> Dict[str, Any]:
         """
         Robust check: Not only checks connection to bridge but validates if 
@@ -182,50 +317,7 @@ class SoilService:
         3. Performs AI analysis and calculations.
         4. Saves and returns the final report.
         """
-        from app.utils.soil_calculator import get_median, validate_reading, evaluate_status, calculate_soil_score
-        
-        # Step 1: Farmer Management
-        try:
-            farmer_id = None
-            existing_farmer = None
-            farmer_name = data_in.farmer_name
-            address = data_in.address
-            
-            if self.farmer_repository:
-                existing_farmer = await self.farmer_repository.get_by_whatsapp(data_in.whatsapp_number)
-                if existing_farmer:
-                    farmer_id = existing_farmer.id
-                    logger.info(f"Found existing farmer with ID: {farmer_id}")
-                    
-                    # Auto-detect name and address if not provided
-                    if not farmer_name:
-                        farmer_name = existing_farmer.farmer_name
-                    if not address:
-                        address = existing_farmer.address
-                    
-                    # Update address if a new one is provided
-                    if data_in.address and data_in.address != existing_farmer.address:
-                        await self.farmer_repository.update(existing_farmer, {"address": data_in.address})
-                        logger.info(f"Updated address for existing farmer: {farmer_id}")
-                        address = data_in.address
-                else:
-                    # If new farmer, name is required
-                    if not farmer_name:
-                        raise SoilMonitoringError("farmer_name is required for new farmers.")
-                    
-                    new_farmer_data = {
-                        "farmer_name": farmer_name,
-                        "whatsapp_number": data_in.whatsapp_number,
-                        "address": address
-                    }
-                    new_farmer = await self.farmer_repository.create(new_farmer_data)
-                    farmer_id = new_farmer.id
-                    logger.info(f"Created new farmer with ID: {farmer_id}")
-        except SoilMonitoringError:
-            raise
-        except Exception as e:
-            logger.error(f"Farmer Management Error: {str(e)}")
-            raise SoilMonitoringError(f"[Farmer] Failed to manage farmer record: {str(e)}")
+        farmer_id, farmer_name, _address = await self._resolve_farmer(data_in)
 
         # Step 2: Trigger Live Hardware Read
         try:
@@ -241,86 +333,31 @@ class SoilService:
             logger.info("="*60)
             # -------------------------------
 
-            sensor_data = {}
-            for key, value in raw_sensor_data.items():
-                if isinstance(value, list):
-                    processed_val = get_median(value)
-                else:
-                    processed_val = float(value) if value is not None else 0.0
-                sensor_data[key] = validate_reading(processed_val, key)
+            sensor_data = self._normalize_sensor_data(raw_sensor_data)
         except Exception as e:
             logger.error(f"Sensor Read Error: {str(e)}")
             raise SoilMonitoringError(f"REAL HARDWARE ERROR: {str(e)}")
 
-        # Step 3: AI Prediction & Analysis
-        test_status = "completed"
-        summary_message = "Analysis complete"
-        try:
-            full_data = {
-                "moisture": sensor_data.get("moisture", 0.0),
-                "temperature": sensor_data.get("temperature", 0.0),
-                "ph": sensor_data.get("ph", 0.0),
-                "ec": sensor_data.get("ec", 0.0),
-                "nitrogen": sensor_data.get("nitrogen", 0.0),
-                "phosphorus": sensor_data.get("phosphorus", 0.0),
-                "potassium": sensor_data.get("potassium", 0.0),
-                "zinc": 0.0, "boron": 0.0, "iron": 0.0, "copper": 0.0,
-                "magnesium": 0.0, "manganese": 0.0, "calcium": 0.0,
-                "sulphur": 0.0, "organic_carbon": 0.0
-            }
+        return await self._analyze_and_save(
+            user_id=user_id,
+            data_in=data_in,
+            farmer_id=farmer_id,
+            farmer_name=farmer_name,
+            sensor_data=sensor_data,
+            sensor_status="Connected",
+        )
 
-            try:
-                micronutrients_pred = soil_ai.predict(sensor_data)
-                if micronutrients_pred is None:
-                    logger.warning("AI model not available. Micronutrients will remain 0.0.")
-                    test_status = "incomplete"
-                    summary_message = "AI model not available"
-                elif micronutrients_pred:
-                    for key, val in micronutrients_pred.items():
-                        full_data[key] = val
-                    logger.info("AI micronutrient prediction successful")
-                else:
-                    logger.warning("AI prediction returned no data (model missing or error). Micronutrients will remain 0.0.")
-                    test_status = "incomplete"
-                    summary_message = "AI model not available"
-            except Exception as ai_err:
-                logger.warning(f"AI prediction failure error: {str(ai_err)}")
-                test_status = "incomplete"
-                summary_message = "AI model not available"
-
-            status_summary = {k: evaluate_status(v, k) for k, v in full_data.items()}
-            fertilizers_data = FertilizerService.calculate_recommendations(
-                npk_data={"nitrogen": sensor_data.get("nitrogen", 0.0), "phosphorus": sensor_data.get("phosphorus", 0.0), "potassium": sensor_data.get("potassium", 0.0)},
-                ph=sensor_data.get("ph", 7.0),
-                ec=sensor_data.get("ec", 0.0)
-            )
-            score = calculate_soil_score(status_summary)
-        except Exception as e:
-            logger.error(f"Analysis Error: {str(e)}")
-            raise SoilMonitoringError(f"[Analysis] Failed to process data: {str(e)}")
-
-        # Step 4: Finalize Record
-        try:
-            db_insert_data = {
-                "farmer_id": farmer_id,
-                "farmer_name": farmer_name,
-                "whatsapp_number": data_in.whatsapp_number,
-                "crop_type": data_in.crop_type,
-                "sensor_status": "Connected",
-                "status": test_status,
-                **full_data,
-                "soil_score": score,
-                "fertilizer_recommendation": fertilizers_data,
-                "status_summary": status_summary,
-                "summary_message": summary_message
-            }
-            
-            db_record = await self.repository.create(user_id, db_insert_data)
-            logger.info(f"One-shot soil test ({test_status}) completed for ID: {db_record.id}")
-            return self._map_to_response(db_record)
-        except Exception as e:
-            logger.error(f"Database Save Error: {str(e)}")
-            raise SoilMonitoringError(f"[Database] Failed to save report: {str(e)}")
+    async def start_test_with_sensor_data(self, user_id: int, data_in: SoilTestCreate, raw_sensor_data: Dict[str, Any]) -> SoilTestResponse:
+        farmer_id, farmer_name, _address = await self._resolve_farmer(data_in)
+        sensor_data = self._normalize_sensor_data(raw_sensor_data)
+        return await self._analyze_and_save(
+            user_id=user_id,
+            data_in=data_in,
+            farmer_id=farmer_id,
+            farmer_name=farmer_name,
+            sensor_data=sensor_data,
+            sensor_status="Manual",
+        )
 
 
     def _map_to_response(self, db_record: Any) -> SoilTestResponse:

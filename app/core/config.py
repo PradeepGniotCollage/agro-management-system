@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     SERIAL_URL: Optional[str] = None
+    DEVICE_API_KEY: Optional[str] = None
+    DEVICE_USER_ID: int = 1
     BACKEND_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"
 
