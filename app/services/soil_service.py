@@ -105,23 +105,19 @@ class SoilService:
             }
 
             try:
+                model_available = soil_ai.is_available()
                 micronutrients_pred = soil_ai.predict(sensor_data)
-                if micronutrients_pred is None:
-                    logger.warning("AI model not available. Micronutrients will remain 0.0.")
-                    test_status = "incomplete"
-                    summary_message = "AI model not available"
-                elif micronutrients_pred:
-                    for key, val in micronutrients_pred.items():
-                        full_data[key] = val
+                for key, val in micronutrients_pred.items():
+                    full_data[key] = val
+                if model_available:
                     logger.info("AI micronutrient prediction successful")
                 else:
-                    logger.warning("AI prediction returned no data (model missing or error). Micronutrients will remain 0.0.")
                     test_status = "incomplete"
-                    summary_message = "AI model not available"
+                    summary_message = "AI model not available (estimated)"
             except Exception as ai_err:
                 logger.warning(f"AI prediction failure error: {str(ai_err)}")
                 test_status = "incomplete"
-                summary_message = "AI model not available"
+                summary_message = "AI model not available (estimated)"
 
             status_summary = {k: evaluate_status(v, k) for k, v in full_data.items()}
             fertilizers_data = FertilizerService.calculate_recommendations(

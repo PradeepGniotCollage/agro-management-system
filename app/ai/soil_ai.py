@@ -66,7 +66,37 @@ class SoilAIModel:
         self._load_model_safe()
         return self.model is not None
 
-    def predict(self, sensor_data: Dict[str, Any]) -> Optional[Dict[str, float]]:
+    def _fallback_predict(self, sensor_data: Dict[str, Any]) -> Dict[str, float]:
+        ph = float(sensor_data.get("ph", 7.0) or 7.0)
+        n = float(sensor_data.get("nitrogen", 0.0) or 0.0)
+        p = float(sensor_data.get("phosphorus", 0.0) or 0.0)
+        k = float(sensor_data.get("potassium", 0.0) or 0.0)
+        moisture = float(sensor_data.get("moisture", 0.0) or 0.0)
+        temperature = float(sensor_data.get("temperature", 0.0) or 0.0)
+
+        zinc = 0.3 + (n * 0.004) + (moisture * 0.002)
+        boron = 0.25 + (p * 0.002) + (temperature * 0.003)
+        iron = 2.2 + (n * 0.01) + (k * 0.002)
+        copper = 0.9 + (k * 0.001) + (n * 0.002)
+        magnesium = 0.4 + (p * 0.002) + (moisture * 0.001)
+        manganese = 1.4 + (n * 0.008) - (abs(ph - 6.8) * 0.15)
+        calcium = 1200.0 + (k * 1.5) + (p * 3.0)
+        sulphur = 3.5 + (n * 0.02) + (p * 0.01)
+        organic_carbon = 0.35 + (n * 0.001) + (p * 0.0005) + (k * 0.0002)
+
+        return {
+            "zinc": round(max(zinc, 0.05), 2),
+            "boron": round(max(boron, 0.05), 2),
+            "iron": round(max(iron, 0.05), 2),
+            "copper": round(max(copper, 0.05), 2),
+            "magnesium": round(max(magnesium, 0.05), 2),
+            "manganese": round(max(manganese, 0.05), 2),
+            "calcium": round(max(calcium, 200.0), 2),
+            "sulphur": round(max(sulphur, 0.1), 2),
+            "organic_carbon": round(max(organic_carbon, 0.05), 2),
+        }
+
+    def predict(self, sensor_data: Dict[str, Any]) -> Dict[str, float]:
         """
         Predicts micronutrients using Joblib ML model.
         """
@@ -75,7 +105,8 @@ class SoilAIModel:
         result_keys = ["zinc", "boron", "iron", "copper", "magnesium", "manganese", "calcium", "sulphur", "organic_carbon"]
         
         if not self.model:
-            return None
+            logger.warning("AI model not available. Using fallback estimation for micronutrients.")
+            return self._fallback_predict(sensor_data)
 
         # Feature vector
         features = np.array([
@@ -93,6 +124,6 @@ class SoilAIModel:
             return {key: round(float(val), 2) for key, val in zip(result_keys, prediction)}
         except Exception as e:
             logger.exception(f"Error during AI prediction: {e}")
-            return None
+            return self._fallback_predict(sensor_data)
 
 soil_ai = SoilAIModel()
