@@ -151,23 +151,50 @@ async def get_sensor_status(
     """
     heartbeat = await db.get(DeviceHeartbeat, 1)
     now = datetime.now(timezone.utc)
-    if heartbeat is not None and heartbeat.last_seen_at and (now - heartbeat.last_seen_at) <= timedelta(seconds=300):
+    heartbeat_age_seconds = None
+    if heartbeat is not None and heartbeat.last_seen_at:
+        heartbeat_age_seconds = (now - heartbeat.last_seen_at).total_seconds()
+
+    logger.info(
+        f"Sensor status check: heartbeat={'present' if heartbeat is not None else 'missing'} "
+        f"last_seen_at={getattr(heartbeat, 'last_seen_at', None)} age_seconds={heartbeat_age_seconds}"
+    )
+
+    if heartbeat_age_seconds is not None and heartbeat_age_seconds <= 300:
+        logger.info("Sensor status source=heartbeat result=online")
         return {
             "connected": True,
             "status": "Online",
             "message": "Remote sensor is online (via device heartbeat).",
             "data": heartbeat.payload,
             "last_seen_at": heartbeat.last_seen_at,
+            "age_seconds": heartbeat_age_seconds,
+            "source": "heartbeat",
+        }
+
+    if settings.SERIAL_URL and "host.docker.internal" in settings.SERIAL_URL:
+        logger.info("Sensor status source=heartbeat result=offline reason=no_recent_heartbeat remote_serial_unavailable")
+        return {
+            "connected": False,
+            "status": "Offline",
+            "message": "No recent device heartbeat. Run device_bridge.py on laptop to update status.",
+            "data": None,
+            "last_seen_at": heartbeat.last_seen_at if heartbeat is not None else None,
+            "age_seconds": heartbeat_age_seconds,
+            "source": "heartbeat",
         }
 
     status_info = await soil_service.check_sensor_connection()
+    logger.info(f"Sensor status source=serial result={'online' if status_info.get('connected') else 'offline'}")
 
     return {
         "connected": status_info["connected"],
         "status": "Online" if status_info["connected"] else "Offline",
         "message": status_info["message"],
         "data": status_info["data"],
-        "last_seen_at": heartbeat.last_seen_at if heartbeat is not None else None
+        "last_seen_at": heartbeat.last_seen_at if heartbeat is not None else None,
+        "age_seconds": heartbeat_age_seconds,
+        "source": "serial" if status_info.get("connected") else "serial_or_none",
     }
 
 @router.post("/sensor-status", response_model=dict)
