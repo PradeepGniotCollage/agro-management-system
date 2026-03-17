@@ -8,6 +8,23 @@ import httpx
 import serial
 
 
+def _try_parse_json_from_text(text: str) -> Optional[Dict[str, Any]]:
+    start = text.find("{")
+    if start < 0:
+        return None
+    for end in range(text.rfind("}") + 1, start, -1):
+        if text[end - 1] != "}":
+            continue
+        chunk = text[start:end]
+        try:
+            parsed = json.loads(chunk)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
 def _read_json_line_from_serial(port: str, baud: int, timeout_s: float) -> Dict[str, Any]:
     ser = serial.serial_for_url(port, do_not_open=True)
     ser.baudrate = baud
@@ -23,6 +40,9 @@ def _read_json_line_from_serial(port: str, baud: int, timeout_s: float) -> Dict[
                 continue
 
             raw_buffer += chunk
+            parsed = _try_parse_json_from_text(raw_buffer)
+            if parsed is not None:
+                return parsed
             if "\n" not in raw_buffer:
                 continue
 
@@ -48,11 +68,13 @@ def _post_heartbeat(
     backend_url: str,
     device_key: str,
     port: str,
-    data: Dict[str, Any],
+    connected: bool,
+    data: Optional[Dict[str, Any]],
+    error: Optional[str],
     timeout_s: float,
 ) -> None:
     url = backend_url.rstrip("/") + "/api/v1/soil-tests/sensor-status"
-    payload: Dict[str, Any] = {"connected": True, "port": port, "data": data}
+    payload: Dict[str, Any] = {"connected": connected, "port": port, "data": data, "error": error}
     with httpx.Client(timeout=timeout_s) as client:
         resp = client.post(url, json=payload, headers={"X-DEVICE-KEY": device_key})
         resp.raise_for_status()
@@ -100,7 +122,11 @@ def main() -> None:
     parser.add_argument("--address", default=os.getenv("ADDRESS"))
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--mock-json", default=os.getenv("MOCK_SENSOR_JSON", ""))
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    args.device_key = (args.device_key or "").strip()
+    args.backend_url = (args.backend_url or "").strip()
 
     if not args.device_key:
         raise SystemExit("DEVICE_API_KEY missing")
@@ -112,31 +138,44 @@ def main() -> None:
         raise SystemExit("crop_type missing")
 
     while True:
-        if args.mock_json:
-            sensor_data = json.loads(args.mock_json)
+        sensor_data: Optional[Dict[str, Any]] = None
+        error: Optional[str] = None
+        try:
+            if args.mock_json:
+                sensor_data = json.loads(args.mock_json)
+            else:
+                sensor_data = _read_json_line_from_serial(args.port, args.baud, args.timeout)
+        except Exception as e:
+            error = str(e)
+
+        connected = sensor_data is not None and error is None
+
+        if args.dry_run:
+            print(json.dumps({"connected": connected, "port": args.port, "data": sensor_data, "error": error}, ensure_ascii=False))
         else:
-            sensor_data = _read_json_line_from_serial(args.port, args.baud, args.timeout)
+            _post_heartbeat(
+                backend_url=args.backend_url,
+                device_key=args.device_key,
+                port=args.port,
+                connected=connected,
+                data=sensor_data,
+                error=error,
+                timeout_s=args.http_timeout,
+            )
 
-        _post_heartbeat(
-            backend_url=args.backend_url,
-            device_key=args.device_key,
-            port=args.port,
-            data=sensor_data,
-            timeout_s=args.http_timeout,
-        )
-
-        result = _post_ingest(
-            backend_url=args.backend_url,
-            device_key=args.device_key,
-            farmer_name=args.farmer_name,
-            whatsapp_number=args.whatsapp_number,
-            crop_type=args.crop_type,
-            address=args.address,
-            sensor_data=sensor_data,
-            user_id=args.user_id,
-            timeout_s=args.http_timeout,
-        )
-        print(json.dumps(result, ensure_ascii=False))
+            if connected and sensor_data is not None:
+                result = _post_ingest(
+                    backend_url=args.backend_url,
+                    device_key=args.device_key,
+                    farmer_name=args.farmer_name,
+                    whatsapp_number=args.whatsapp_number,
+                    crop_type=args.crop_type,
+                    address=args.address,
+                    sensor_data=sensor_data,
+                    user_id=args.user_id,
+                    timeout_s=args.http_timeout,
+                )
+                print(json.dumps(result, ensure_ascii=False))
 
         if args.once:
             break
