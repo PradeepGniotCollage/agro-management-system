@@ -44,6 +44,20 @@ def _read_json_line_from_serial(port: str, baud: int, timeout_s: float) -> Dict[
             ser.close()
 
 
+def _post_heartbeat(
+    backend_url: str,
+    device_key: str,
+    port: str,
+    data: Dict[str, Any],
+    timeout_s: float,
+) -> None:
+    url = backend_url.rstrip("/") + "/api/v1/soil-tests/sensor-status"
+    payload: Dict[str, Any] = {"connected": True, "port": port, "data": data}
+    with httpx.Client(timeout=timeout_s) as client:
+        resp = client.post(url, json=payload, headers={"X-DEVICE-KEY": device_key})
+        resp.raise_for_status()
+
+
 def _post_ingest(
     backend_url: str,
     device_key: str,
@@ -102,6 +116,14 @@ def main() -> None:
             sensor_data = json.loads(args.mock_json)
         else:
             sensor_data = _read_json_line_from_serial(args.port, args.baud, args.timeout)
+
+        _post_heartbeat(
+            backend_url=args.backend_url,
+            device_key=args.device_key,
+            port=args.port,
+            data=sensor_data,
+            timeout_s=args.http_timeout,
+        )
 
         result = _post_ingest(
             backend_url=args.backend_url,

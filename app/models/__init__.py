@@ -6,5 +6,6 @@ from app.models.download_token import DownloadToken
 from app.models.invoice import Invoice
 from app.models.invoice_item import InvoiceItem
 from app.models.farmer import Farmer
+from app.models.device_heartbeat import DeviceHeartbeat
 
 # This ensures that models are registered with Base.metadata

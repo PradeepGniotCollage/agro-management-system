@@ -4,6 +4,7 @@ from typing import List
 import uuid
 import logging
 from fastapi.responses import Response
+from datetime import datetime, timezone, timedelta
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -17,6 +18,7 @@ from app.services.soil_service import SoilService
 from app.core.exceptions import SoilMonitoringError
 from app.services.pdf_service import PDFService
 from jose import jwt, JWTError
+from app.models.device_heartbeat import DeviceHeartbeat
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -125,18 +127,63 @@ async def get_farmer_reports(
 @router.get("/sensor-status", response_model=dict)
 async def get_sensor_status(
     current_user: User = Depends(get_current_user),
-    soil_service: SoilService = Depends(get_soil_service)
+    soil_service: SoilService = Depends(get_soil_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Checks if the soil sensors are physically connected and streaming data.
     """
     status_info = await soil_service.check_sensor_connection()
+
+    if not status_info.get("connected"):
+        heartbeat = await db.get(DeviceHeartbeat, 1)
+        if heartbeat is not None:
+            now = datetime.now(timezone.utc)
+            if heartbeat.connected and heartbeat.last_seen_at and (now - heartbeat.last_seen_at) <= timedelta(seconds=45):
+                return {
+                    "connected": True,
+                    "status": "Online",
+                    "message": "Remote sensor is online (via device heartbeat).",
+                    "data": heartbeat.payload,
+                    "last_seen_at": heartbeat.last_seen_at,
+                }
+
     return {
         "connected": status_info["connected"],
         "status": "Online" if status_info["connected"] else "Offline",
         "message": status_info["message"],
         "data": status_info["data"]
     }
+
+@router.post("/sensor-status", response_model=dict)
+async def post_sensor_status(
+    payload: dict,
+    x_device_key: str = Header(default="", alias="X-DEVICE-KEY"),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.DEVICE_API_KEY:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DEVICE_API_KEY not configured")
+    if x_device_key.strip() != str(settings.DEVICE_API_KEY).strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device key")
+
+    connected = bool(payload.get("connected", True))
+    port = payload.get("port")
+    data = payload.get("data")
+    last_seen_at = datetime.now(timezone.utc)
+
+    hb = await db.get(DeviceHeartbeat, 1)
+    if hb is None:
+        hb = DeviceHeartbeat(id=1, connected=connected, port=port, payload=data, last_seen_at=last_seen_at)
+        db.add(hb)
+    else:
+        hb.connected = connected
+        hb.port = port
+        hb.payload = data
+        hb.last_seen_at = last_seen_at
+        db.add(hb)
+
+    await db.commit()
+    return {"ok": True, "connected": connected, "last_seen_at": last_seen_at}
 
 @router.get("/report/{test_id}")
 async def download_report_pdf(
