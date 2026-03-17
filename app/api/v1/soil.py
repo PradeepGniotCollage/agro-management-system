@@ -103,15 +103,10 @@ async def start_soil_test_workflow(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
 
         if not test_data.sensor_data:
-            hb = await db.get(DeviceHeartbeat, 1)
-            now = datetime.now(timezone.utc)
-            if hb and hb.last_seen_at and (now - hb.last_seen_at) <= timedelta(seconds=60) and isinstance(hb.payload, dict):
-                test_data.sensor_data = hb.payload
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No recent sensor data available. Ask operator to run the device bridge."
-                )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="sensor_data is required. Use device bridge or call with X-DEVICE-KEY from operator laptop."
+            )
 
     try:
         if test_data.sensor_data:
