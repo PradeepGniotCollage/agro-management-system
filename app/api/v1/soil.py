@@ -151,7 +151,7 @@ async def get_sensor_status(
     """
     heartbeat = await db.get(DeviceHeartbeat, 1)
     now = datetime.now(timezone.utc)
-    if heartbeat is not None and heartbeat.connected and heartbeat.last_seen_at and (now - heartbeat.last_seen_at) <= timedelta(seconds=60):
+    if heartbeat is not None and heartbeat.last_seen_at and (now - heartbeat.last_seen_at) <= timedelta(seconds=60):
         return {
             "connected": True,
             "status": "Online",
