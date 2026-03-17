@@ -178,13 +178,9 @@ class SoilService:
         port = settings.SERIAL_URL or "Auto-scan"
         logger.info(f"Checking real-time sensor stream at {port} (Timeout: {timeout}s)...")
         
-        # Use existing logic but with shorter timeout for quick status check
+        # In remote deployments (Render), /sensor-status relies primarily on heartbeat.
         if settings.SERIAL_URL and "host.docker.internal" in settings.SERIAL_URL:
-            return {
-                "connected": False,
-                "data": None,
-                "message": "Remote sensor expected (use device bridge heartbeat)."
-            }
+            return {"connected": False, "data": None, "message": "Remote sensor expected (use device bridge heartbeat)."}
         ports = [settings.SERIAL_URL] if settings.SERIAL_URL else [p.device for p in serial.tools.list_ports.comports()]
         
         if not ports:
