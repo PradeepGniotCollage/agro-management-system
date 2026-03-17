@@ -36,6 +36,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+if settings.DEVICE_API_KEY:
+    settings.DEVICE_API_KEY = settings.DEVICE_API_KEY.strip()
 
 # ---------- DATABASE URL NORMALIZATION & AUTO SWITCH ----------
 if settings.DATABASE_URL:

@@ -66,6 +66,16 @@ async def start_soil_test_workflow(
         user_id = int(test_data.user_id or settings.DEVICE_USER_ID)
         if not test_data.sensor_data:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="sensor_data is required for device submissions")
+        hb = await db.get(DeviceHeartbeat, 1)
+        last_seen_at = datetime.now(timezone.utc)
+        if hb is None:
+            hb = DeviceHeartbeat(id=1, connected=True, port=None, payload=test_data.sensor_data, last_seen_at=last_seen_at)
+            db.add(hb)
+        else:
+            hb.connected = True
+            hb.payload = test_data.sensor_data
+            hb.last_seen_at = last_seen_at
+            db.add(hb)
     else:
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
@@ -133,26 +143,25 @@ async def get_sensor_status(
     """
     Checks if the soil sensors are physically connected and streaming data.
     """
-    status_info = await soil_service.check_sensor_connection()
+    heartbeat = await db.get(DeviceHeartbeat, 1)
+    now = datetime.now(timezone.utc)
+    if heartbeat is not None and heartbeat.connected and heartbeat.last_seen_at and (now - heartbeat.last_seen_at) <= timedelta(seconds=60):
+        return {
+            "connected": True,
+            "status": "Online",
+            "message": "Remote sensor is online (via device heartbeat).",
+            "data": heartbeat.payload,
+            "last_seen_at": heartbeat.last_seen_at,
+        }
 
-    if not status_info.get("connected"):
-        heartbeat = await db.get(DeviceHeartbeat, 1)
-        if heartbeat is not None:
-            now = datetime.now(timezone.utc)
-            if heartbeat.connected and heartbeat.last_seen_at and (now - heartbeat.last_seen_at) <= timedelta(seconds=45):
-                return {
-                    "connected": True,
-                    "status": "Online",
-                    "message": "Remote sensor is online (via device heartbeat).",
-                    "data": heartbeat.payload,
-                    "last_seen_at": heartbeat.last_seen_at,
-                }
+    status_info = await soil_service.check_sensor_connection()
 
     return {
         "connected": status_info["connected"],
         "status": "Online" if status_info["connected"] else "Offline",
         "message": status_info["message"],
-        "data": status_info["data"]
+        "data": status_info["data"],
+        "last_seen_at": heartbeat.last_seen_at if heartbeat is not None else None
     }
 
 @router.post("/sensor-status", response_model=dict)

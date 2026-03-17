@@ -179,6 +179,12 @@ class SoilService:
         logger.info(f"Checking real-time sensor stream at {port} (Timeout: {timeout}s)...")
         
         # Use existing logic but with shorter timeout for quick status check
+        if settings.SERIAL_URL and "host.docker.internal" in settings.SERIAL_URL:
+            return {
+                "connected": False,
+                "data": None,
+                "message": "Remote sensor expected (use device bridge heartbeat)."
+            }
         ports = [settings.SERIAL_URL] if settings.SERIAL_URL else [p.device for p in serial.tools.list_ports.comports()]
         
         if not ports:
@@ -216,7 +222,7 @@ class SoilService:
                 
                 logger.warning(f"Port {p_url} is open but NO DATA received. Hardware might be disconnected from Arduino.")
             except Exception as e:
-                logger.error(f"Status check failed for {p_url}: {e}")
+                logger.warning(f"Status check failed for {p_url}: {e}")
             finally:
                 if ser and ser.is_open:
                     ser.close()
