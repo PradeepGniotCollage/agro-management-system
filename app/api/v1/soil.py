@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from datetime import datetime, timezone, timedelta
 
 from app.core.database import get_db
+from app.core.database import AsyncSessionLocal
 from app.core.config import settings
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -22,6 +23,21 @@ from app.models.device_heartbeat import DeviceHeartbeat
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+async def _upsert_device_heartbeat(connected: bool, port: str | None, payload: dict | None) -> None:
+    last_seen_at = datetime.now(timezone.utc)
+    async with AsyncSessionLocal() as session:
+        hb = await session.get(DeviceHeartbeat, 1)
+        if hb is None:
+            hb = DeviceHeartbeat(id=1, connected=connected, port=port, payload=payload, last_seen_at=last_seen_at)
+            session.add(hb)
+        else:
+            hb.connected = connected
+            hb.port = port
+            hb.payload = payload
+            hb.last_seen_at = last_seen_at
+            session.add(hb)
+        await session.commit()
 
 def get_soil_service(db: AsyncSession = Depends(get_db)):
     repo = SoilRepository(db)
@@ -66,16 +82,7 @@ async def start_soil_test_workflow(
         user_id = int(test_data.user_id or settings.DEVICE_USER_ID)
         if not test_data.sensor_data:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="sensor_data is required for device submissions")
-        hb = await db.get(DeviceHeartbeat, 1)
-        last_seen_at = datetime.now(timezone.utc)
-        if hb is None:
-            hb = DeviceHeartbeat(id=1, connected=True, port=None, payload=test_data.sensor_data, last_seen_at=last_seen_at)
-            db.add(hb)
-        else:
-            hb.connected = True
-            hb.payload = test_data.sensor_data
-            hb.last_seen_at = last_seen_at
-            db.add(hb)
+        await _upsert_device_heartbeat(True, None, test_data.sensor_data)
     else:
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
@@ -136,7 +143,6 @@ async def get_farmer_reports(
 
 @router.get("/sensor-status", response_model=dict)
 async def get_sensor_status(
-    current_user: User = Depends(get_current_user),
     soil_service: SoilService = Depends(get_soil_service),
     db: AsyncSession = Depends(get_db),
 ):
