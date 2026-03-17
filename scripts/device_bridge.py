@@ -55,16 +55,15 @@ def _post_ingest(
     user_id: Optional[int],
     timeout_s: float,
 ) -> Dict[str, Any]:
-    url = backend_url.rstrip("/") + "/api/v1/soil-tests/ingest"
+    url = backend_url.rstrip("/") + "/api/v1/soil-tests/start"
     payload: Dict[str, Any] = {
         "farmer_name": farmer_name,
         "whatsapp_number": whatsapp_number,
         "crop_type": crop_type,
         "address": address,
         "sensor_data": sensor_data,
+        "user_id": user_id,
     }
-    if user_id is not None:
-        payload["user_id"] = user_id
 
     with httpx.Client(timeout=timeout_s) as client:
         resp = client.post(url, json=payload, headers={"X-DEVICE-KEY": device_key})

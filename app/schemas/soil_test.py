@@ -16,6 +16,10 @@ class SoilTestCreateWithSensorData(SoilTestCreate):
 class SoilTestIngestRequest(SoilTestCreateWithSensorData):
     user_id: Optional[int] = None
 
+class SoilTestStartRequest(SoilTestCreate):
+    sensor_data: Optional[Dict[str, Any]] = None
+    user_id: Optional[int] = None
+
 class MetaResponse(BaseModel):
     report_id: int
     farmer_id: Optional[int] = None
