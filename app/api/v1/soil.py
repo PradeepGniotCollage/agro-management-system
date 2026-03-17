@@ -162,13 +162,26 @@ async def get_sensor_status(
 
     if heartbeat_age_seconds is not None and heartbeat_age_seconds <= 300:
         logger.info("Sensor status source=heartbeat result=online")
+        sensor_data = heartbeat.payload if isinstance(getattr(heartbeat, "payload", None), dict) else None
+        data_available = bool(sensor_data)
+        if not sensor_data:
+            sensor_data = {
+                "moisture": 0.0,
+                "temperature": 0.0,
+                "ph": 0.0,
+                "ec": 0.0,
+                "nitrogen": 0.0,
+                "phosphorus": 0.0,
+                "potassium": 0.0,
+            }
         return {
             "connected": True,
             "status": "Online",
             "message": "Remote sensor is online (via device heartbeat).",
-            "data": heartbeat.payload,
+            "data": sensor_data,
             "last_seen_at": heartbeat.last_seen_at,
             "age_seconds": heartbeat_age_seconds,
+            "data_available": data_available,
             "source": "heartbeat",
         }
 
