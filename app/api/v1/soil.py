@@ -88,7 +88,7 @@ async def ingest_soil_test(
 ):
     if not settings.DEVICE_API_KEY:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DEVICE_API_KEY not configured")
-    if x_device_key != settings.DEVICE_API_KEY:
+    if x_device_key.strip() != str(settings.DEVICE_API_KEY).strip():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid device key")
 
     user_id = payload.user_id or settings.DEVICE_USER_ID

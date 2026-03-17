@@ -72,8 +72,22 @@ class SoilService:
         for key, value in (raw_sensor_data or {}).items():
             if isinstance(value, list):
                 processed_val = get_median(value)
+            elif isinstance(value, dict):
+                extracted = None
+                for candidate_key in ["value", "val", "reading", "data", "avg", "mean"]:
+                    if candidate_key in value:
+                        extracted = value.get(candidate_key)
+                        break
+                if extracted is None and len(value) == 1:
+                    extracted = next(iter(value.values()))
+                if extracted is None:
+                    raise SoilMonitoringError(f"Invalid sensor value for '{key}': expected number, got object")
+                processed_val = float(extracted) if extracted is not None else 0.0
             else:
-                processed_val = float(value) if value is not None else 0.0
+                try:
+                    processed_val = float(value) if value is not None else 0.0
+                except (TypeError, ValueError):
+                    raise SoilMonitoringError(f"Invalid sensor value for '{key}': expected number, got {type(value).__name__}")
             sensor_data[key] = validate_reading(processed_val, key)
         return sensor_data
 
